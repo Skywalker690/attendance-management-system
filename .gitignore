@@ -1,0 +1,16 @@
+# Project exclude paths
+/out/
+.idea
+*.class
+*.jar
+*.war
+*.ear
+target/
+build/
+bin/
+*.log
+*.iml
+.DS_Store
+*.pdf
+*.csv
+db.properties
