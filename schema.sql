@@ -1,145 +1,215 @@
--- PostgreSQL Database Schema for Student Attendance Management System
--- Database: student_attendance_db
+-- ==========================================================
+-- Student Attendance Management System (Sync Schema Script)
+-- Safe to run multiple times (idempotent)
+-- Author: Sanjo
+-- ==========================================================
 
--- Drop tables if they exist (in reverse order of dependencies)
-DROP TABLE IF EXISTS attendance CASCADE;
-DROP TABLE IF EXISTS sessions CASCADE;
-DROP TABLE IF EXISTS students CASCADE;
-DROP TABLE IF EXISTS teachers CASCADE;
-DROP TABLE IF EXISTS subjects CASCADE;
-DROP TABLE IF EXISTS users CASCADE;
-
--- Create users table
-CREATE TABLE users (
-                       user_id SERIAL PRIMARY KEY,
-                       username VARCHAR(50) UNIQUE NOT NULL,
-                       password VARCHAR(255) NOT NULL,
-                       role VARCHAR(20) NOT NULL CHECK (role IN ('Admin', 'Teacher', 'Student')),
-                       created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- ===================
+-- 1. USERS TABLE
+-- ===================
+CREATE TABLE IF NOT EXISTS users (
+                                     id SERIAL PRIMARY KEY,
+                                     username VARCHAR(50) UNIQUE NOT NULL,
+                                     password VARCHAR(255) NOT NULL,
+                                     role VARCHAR(20) NOT NULL CHECK (role IN ('Admin', 'Teacher', 'Student')),
+                                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create students table
-CREATE TABLE students (
-                          student_id SERIAL PRIMARY KEY,
-                          first_name VARCHAR(50) NOT NULL,
-                          last_name VARCHAR(50) NOT NULL,
-                          student_roll VARCHAR(20) UNIQUE NOT NULL,
-                          email VARCHAR(100),
-                          phone VARCHAR(20),
-                          photo_path VARCHAR(255),
-                          class VARCHAR(10) CHECK (class IN ('S1', 'S2', 'S3', 'S4', 'S5', 'S6', 'S7', 'S8')),
-                          division VARCHAR(1) CHECK (division IN ('A', 'B', 'C', 'D', 'E')),
-                          user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- ===================
+-- 2. STUDENTS TABLE
+-- ===================
+CREATE TABLE IF NOT EXISTS students (
+                                        id SERIAL PRIMARY KEY,
+                                        name VARCHAR(100),
+                                        first_name VARCHAR(50),
+                                        last_name VARCHAR(50),
+                                        roll_number VARCHAR(20) UNIQUE,
+                                        department VARCHAR(50),
+                                        class VARCHAR(10) CHECK (class IN ('S1','S2','S3','S4','S5','S6','S7','S8')),
+                                        division VARCHAR(1) CHECK (division IN ('A','B','C','D','E')),
+                                        email VARCHAR(100),
+                                        phone VARCHAR(20),
+                                        photo_path VARCHAR(255),
+                                        year INT,
+                                        user_id INT UNIQUE,
+                                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create teachers table
-CREATE TABLE teachers (
-                          teacher_id SERIAL PRIMARY KEY,
-                          first_name VARCHAR(50) NOT NULL,
-                          last_name VARCHAR(50) NOT NULL,
-                          email VARCHAR(100) UNIQUE NOT NULL,
-                          phone VARCHAR(20),
-                          user_id INTEGER REFERENCES users(user_id) ON DELETE SET NULL,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+-- Add missing columns safely
+ALTER TABLE students ADD COLUMN IF NOT EXISTS roll_number VARCHAR(20) UNIQUE;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS department VARCHAR(50);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS year INT;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS user_id INT UNIQUE;
+ALTER TABLE students ADD COLUMN IF NOT EXISTS email VARCHAR(100);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS photo_path VARCHAR(255);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS class VARCHAR(10);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS division VARCHAR(1);
+ALTER TABLE students ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+-- Add FK constraint to users
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name='students' AND constraint_type='FOREIGN KEY'
+        ) THEN
+            ALTER TABLE students
+                ADD CONSTRAINT fk_students_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+    END $$;
+
+-- ===================
+-- 3. TEACHERS TABLE
+-- ===================
+CREATE TABLE IF NOT EXISTS teachers (
+                                        id SERIAL PRIMARY KEY,
+                                        first_name VARCHAR(50),
+                                        last_name VARCHAR(50),
+                                        name VARCHAR(100),
+                                        email VARCHAR(100) UNIQUE,
+                                        phone VARCHAR(20),
+                                        subject VARCHAR(100),
+                                        user_id INT UNIQUE,
+                                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create subjects table
-CREATE TABLE subjects (
-                          subject_id SERIAL PRIMARY KEY,
-                          subject_name VARCHAR(100) UNIQUE NOT NULL,
-                          subject_code VARCHAR(20),
-                          description TEXT,
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS name VARCHAR(100);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS subject VARCHAR(100);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS email VARCHAR(100);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS phone VARCHAR(20);
+ALTER TABLE teachers ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name='teachers' AND constraint_type='FOREIGN KEY'
+        ) THEN
+            ALTER TABLE teachers
+                ADD CONSTRAINT fk_teachers_user FOREIGN KEY (user_id)
+                    REFERENCES users(id) ON DELETE CASCADE;
+        END IF;
+    END $$;
+
+-- ===================
+-- 4. SUBJECTS TABLE
+-- ===================
+CREATE TABLE IF NOT EXISTS subjects (
+                                        id SERIAL PRIMARY KEY,
+                                        name VARCHAR(100) NOT NULL,
+                                        code VARCHAR(20) UNIQUE NOT NULL,
+                                        description TEXT,
+                                        teacher_id INT,
+                                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create sessions table
-CREATE TABLE sessions (
-                          session_id SERIAL PRIMARY KEY,
-                          session_date DATE NOT NULL,
-                          subject_id INTEGER NOT NULL REFERENCES subjects(subject_id) ON DELETE CASCADE,
-                          teacher_id INTEGER REFERENCES teachers(teacher_id) ON DELETE SET NULL,
-                          session_number INTEGER NOT NULL CHECK (session_number >= 1 AND session_number <= 10),
-                          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                          UNIQUE(session_date, subject_id, session_number)
+ALTER TABLE subjects ADD COLUMN IF NOT EXISTS description TEXT;
+ALTER TABLE subjects ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name='subjects' AND constraint_type='FOREIGN KEY'
+        ) THEN
+            ALTER TABLE subjects
+                ADD CONSTRAINT fk_subjects_teacher FOREIGN KEY (teacher_id)
+                    REFERENCES teachers(id) ON DELETE SET NULL;
+        END IF;
+    END $$;
+
+-- ===================
+-- 5. SESSIONS TABLE
+-- ===================
+CREATE TABLE IF NOT EXISTS sessions (
+                                        id SERIAL PRIMARY KEY,
+                                        subject_id INT NOT NULL,
+                                        session_date DATE NOT NULL,
+                                        session_number INT NOT NULL CHECK (session_number >= 1 AND session_number <= 10),
+                                        teacher_id INT,
+                                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create attendance table
-CREATE TABLE attendance (
-                            attendance_id SERIAL PRIMARY KEY,
-                            student_id INTEGER NOT NULL REFERENCES students(student_id) ON DELETE CASCADE,
-                            session_id INTEGER NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
-                            status VARCHAR(20) NOT NULL CHECK (status IN ('Present', 'Absent', 'Late', 'Excused')),
-                            marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                            UNIQUE(student_id, session_id)
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS session_number INT NOT NULL DEFAULT 1 CHECK (session_number >= 1 AND session_number <= 10);
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS teacher_id INT;
+ALTER TABLE sessions ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name='sessions' AND constraint_type='FOREIGN KEY'
+        ) THEN
+            ALTER TABLE sessions
+                ADD CONSTRAINT fk_sessions_subject FOREIGN KEY (subject_id)
+                    REFERENCES subjects(id) ON DELETE CASCADE;
+        END IF;
+    END $$;
+
+-- Unique constraint for (session_date, subject_id, session_number)
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM pg_constraint WHERE conname = 'sessions_session_date_subject_id_session_number_key'
+        ) THEN
+            ALTER TABLE sessions
+                ADD CONSTRAINT sessions_session_date_subject_id_session_number_key
+                    UNIQUE (session_date, subject_id, session_number);
+        END IF;
+    END $$;
+
+-- ===================
+-- 6. ATTENDANCE TABLE
+-- ===================
+CREATE TABLE IF NOT EXISTS attendance (
+                                          id SERIAL PRIMARY KEY,
+                                          student_id INT NOT NULL,
+                                          session_id INT NOT NULL,
+                                          status VARCHAR(20) NOT NULL CHECK (status IN ('Present', 'Absent', 'Late', 'Excused')),
+                                          marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
 );
 
--- Create indexes for better query performance
-CREATE INDEX idx_students_roll ON students(student_roll);
-CREATE INDEX idx_students_user_id ON students(user_id);
-CREATE INDEX idx_teachers_email ON teachers(email);
-CREATE INDEX idx_sessions_date ON sessions(session_date);
-CREATE INDEX idx_sessions_subject ON sessions(subject_id);
-CREATE INDEX idx_attendance_student ON attendance(student_id);
-CREATE INDEX idx_attendance_session ON attendance(session_id);
-CREATE INDEX idx_attendance_status ON attendance(status);
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS marked_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP;
+ALTER TABLE attendance ADD COLUMN IF NOT EXISTS status VARCHAR(20) CHECK (status IN ('Present', 'Absent', 'Late', 'Excused'));
 
-----------------------Login--------------------------------
+DO $$
+    BEGIN
+        IF NOT EXISTS (
+            SELECT 1 FROM information_schema.table_constraints
+            WHERE table_name='attendance' AND constraint_type='FOREIGN KEY'
+        ) THEN
+            ALTER TABLE attendance
+                ADD CONSTRAINT fk_attendance_student FOREIGN KEY (student_id)
+                    REFERENCES students(id) ON DELETE CASCADE;
+            ALTER TABLE attendance
+                ADD CONSTRAINT fk_attendance_session FOREIGN KEY (session_id)
+                    REFERENCES sessions(id) ON DELETE CASCADE;
+        END IF;
+    END $$;
 
--- Insert default admin user (password: 123)
-INSERT INTO users (username, password, role) VALUES
-    ('admin', '123', 'Admin');
+-- ===================
+-- 7. INDEXES
+-- ===================
+CREATE INDEX IF NOT EXISTS idx_students_roll ON students(roll_number);
+CREATE INDEX IF NOT EXISTS idx_students_user_id ON students(user_id);
+CREATE INDEX IF NOT EXISTS idx_teachers_email ON teachers(email);
+CREATE INDEX IF NOT EXISTS idx_sessions_date ON sessions(session_date);
+CREATE INDEX IF NOT EXISTS idx_sessions_subject ON sessions(subject_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_student ON attendance(student_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_session ON attendance(session_id);
+CREATE INDEX IF NOT EXISTS idx_attendance_status ON attendance(status);
 
--- Insert sample teacher users (password: 123)
-INSERT INTO users (username, password, role) VALUES
-                                                 ('teacher1', '123', 'Teacher'),
-                                                 ('teacher2', '123', 'Teacher'),
-                                                 ('teacher3', '123', 'Teacher'),
-                                                 ('teacher4', '123', 'Teacher'),
-                                                 ('teacher5', '123', 'Teacher');
+-- ===================
+-- 8. DEFAULT DATA
+-- ===================
+INSERT INTO users (username, password, role)
+SELECT 'admin', '123', 'Admin'
+WHERE NOT EXISTS (SELECT 1 FROM users WHERE username='admin');
 
--- Insert sample student user (password: 123)
-INSERT INTO users (username, password, role) VALUES
-    ('student1', '123', 'Student');
+COMMIT;
 
-------------------------------------------------------------
-
-
--- Insert sample subjects
-INSERT INTO subjects (subject_name, subject_code) VALUES
-                                                      ('Mathematics', 'MATH101'),
-                                                      ('Physics', 'PHYS101'),
-                                                      ('Computer Science', 'CS101'),
-                                                      ('English', 'ENG101'),
-                                                      ('Chemistry', 'CHEM101');
-
--- Insert sample teachers
-INSERT INTO teachers (first_name, last_name, email, user_id) VALUES
-                                                                 ('John', 'Doe', 'john.doe@school.edu', 2),
-                                                                 ('Jane', 'Smith', 'jane.smith@school.edu', 3),
-                                                                 ('Michael', 'Brown', 'michael.brown@school.edu', 4),
-                                                                 ('Emily', 'Johnson', 'emily.johnson@school.edu', 5),
-                                                                 ('David', 'Wilson', 'david.wilson@school.edu', 6);
-
--- Insert sample students
-INSERT INTO students (first_name, last_name, student_roll, email, class, division, user_id) VALUES
-                                                                               ('Alice', 'Smith', 'STU001', 'alice.smith@student.edu', 'S1', 'A', 7),
-                                                                               ('Bob', 'Johnson', 'STU002', 'bob.johnson@student.edu', 'S1', 'A', NULL),
-                                                                               ('Charlie', 'Brown', 'STU003', 'charlie.brown@student.edu', 'S1', 'B', NULL),
-                                                                               ('Diana', 'Wilson', 'STU004', 'diana.wilson@student.edu', 'S1', 'B', NULL),
-                                                                               ('Eve', 'Davis', 'STU005', 'eve.davis@student.edu', 'S2', 'A', NULL),
-                                                                               ('Frank', 'Taylor', 'STU006', 'frank.taylor@student.edu', 'S2', 'A', NULL),
-                                                                               ('Grace', 'Lee', 'STU007', 'grace.lee@student.edu', 'S2', 'B', NULL),
-                                                                               ('Henry', 'Martinez', 'STU008', 'henry.martinez@student.edu', 'S2', 'B', NULL),
-                                                                               ('Isabella', 'Garcia', 'STU009', 'isabella.garcia@student.edu', 'S3', 'A', NULL),
-                                                                               ('James', 'Lopez', 'STU010', 'james.lopez@student.edu', 'S3', 'A', NULL),
-                                                                               ('Kelly', 'Hernandez', 'STU011', 'kelly.hernandez@student.edu', 'S3', 'B', NULL),
-                                                                               ('Liam', 'Moore', 'STU012', 'liam.moore@student.edu', 'S3', 'B', NULL),
-                                                                               ('Mia', 'Clark', 'STU013', 'mia.clark@student.edu', 'S4', 'A', NULL),
-                                                                               ('Noah', 'Lewis', 'STU014', 'noah.lewis@student.edu', 'S4', 'A', NULL),
-                                                                               ('Olivia', 'Walker', 'STU015', 'olivia.walker@student.edu', 'S4', 'B', NULL),
-                                                                               ('Peter', 'Hall', 'STU016', 'peter.hall@student.edu', 'S4', 'B', NULL),
-                                                                               ('Quinn', 'Allen', 'STU017', 'quinn.allen@student.edu', 'S5', 'A', NULL),
-                                                                               ('Rachel', 'Young', 'STU018', 'rachel.young@student.edu', 'S5', 'A', NULL),
-                                                                               ('Samuel', 'King', 'STU019', 'samuel.king@student.edu', 'S5', 'B', NULL),
-                                                                               ('Tara', 'Scott', 'STU020', 'tara.scott@student.edu', 'S5', 'B', NULL);
+-- ==========================================================
+-- ✅ Schema Sync Completed Successfully
+-- ==========================================================
