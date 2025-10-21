@@ -157,12 +157,6 @@ public class Main extends JFrame {
         
         mainPanel.add(titlePanel, BorderLayout.NORTH);
         mainPanel.add(centerPanel, BorderLayout.CENTER);
-        
-        // Footer
-        JPanel footer = new JPanel();
-        footer.setBackground(BACKGROUND_COLOR);
-        footer.add(createStyledLabel("© 2024 Student Attendance System", SMALL_FONT));
-        mainPanel.add(footer, BorderLayout.SOUTH);
 
         return mainPanel;
     }
